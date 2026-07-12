@@ -86,9 +86,13 @@ jobs:
         run: |
           $crd = ($env:CRD | Out-String).Trim()
           $n = if ($crd.Length -gt 3) { 1 } else { [math]::Max(1, [math]::Min(10, [int]$env:COUNT)) }
-          $inc = 1..$n | ForEach-Object { @{ id = $_ } }
-          "matrix=$(@{ include = $inc } | ConvertTo-Json -Compress)" | Out-File $env:GITHUB_OUTPUT -Append
-          "multi=$([int]($n -gt 1))" | Out-File $env:GITHUB_OUTPUT -Append
+          
+          # Force an array even if $n = 1 to satisfy GitHub Actions matrix schema
+          $inc = @(1..$n | ForEach-Object { @{ id = $_ } })
+          $matrixJson = @{ include = $inc } | ConvertTo-Json -Compress -Depth 5
+          
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "matrix=$matrixJson"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "multi=$([int]($n -gt 1))"
 
   rdp:
     needs: setup
