@@ -172,12 +172,13 @@ jobs:
 
           function Get-SystemMetrics {
               $os = Get-CimInstance Win32_OperatingSystem
-              $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
+              try { $cpu = (Get-Counter '\Processor(_Total)\% Processor Time' -SampleInterval 1 -MaxSamples 1 -ErrorAction SilentlyContinue).CounterSamples.CookedValue } catch { $cpu = 0 }
               $net = Get-NetAdapter | Where-Object Status -eq 'Up' | Select-Object -First 1
+              $stats = if($net){ $net | Get-NetAdapterStatistics } else { $null }
               return [ordered]@{
                   timestamp     = (Get-Date).ToString("o")
                   free_ram_gb   = [math]::Round($os.FreePhysicalMemory / 1MB, 2)
-                  cpu_load_pct  = (Get-Counter '\Processor(_Total)\% Processor Time' -SampleInterval 1 -MaxSamples 1).CounterSamples.CookedValue
+                  cpu_load_pct  = [math]::Round($cpu, 1)
                   network_sent_mb = if ($net) { [math]::Round($net | Get-NetAdapterStatistics | Select-Object -ExpandProperty SentBytes / 1MB, 2) } else { 0 }
                   network_recv_mb = if ($net) { [math]::Round($net | Get-NetAdapterStatistics | Select-Object -ExpandProperty ReceivedBytes / 1MB, 2) } else { 0 }
               }
@@ -226,7 +227,7 @@ jobs:
           w32tm /config /manualpeerlist:"time.cloudflare.com,0x8 pool.ntp.org,0x8" /syncfromflags:manual /reliable:yes /update | Out-Null
           Restart-Service w32time -Force -ErrorAction SilentlyContinue; w32tm /resync /force | Out-Null
 
-          # APEX-Core v2.2 Bootstrap
+          # APEX-Core v2.2 Bootstrap (Fixed YAML parsing)
           $core = "C:\Setup\scripts\APEX-Core.ps1"
           @'
 # APEX-Core v2.2 — Sovereign Apex Fabric Functions Library
