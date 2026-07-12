@@ -4,23 +4,6 @@ name: "RDP-ProAccess (APEX-ULTIMA) v2.2 — Sovereign Apex Fabric"
 #  RDP-ProAccess — APEX-ULTIMA Edition v2.2 (Sovereign Apex Fabric)
 #  THE MOST ADVANCED RDP-on-GitHub-Actions workflow currently possible
 # ═══════════════════════════════════════════════════════════════════════════
-#  Built with full engineering freedom for maximum performance, resilience,
-#  observability, and long-term maintainability when you ONLY use Tailscale.
-#
-#  Core Philosophy
-#  • Tailscale is the ONLY access path (ACLs strongly recommended)
-#  • Zero-trust, self-healing, observable sovereign fabric
-#  • Blazing fast + rock-solid RDP experience over WireGuard
-#  • Enterprise-grade PowerShell engineering inside GitHub Actions
-#
-#  v2.2 Highlights (Major Leap)
-#  • APEX-Core v2.2 with advanced helper library + background monitor
-#  • Background Self-Healing Monitor (parallel job during session hold)
-#  • Periodic System Telemetry Snapshots (CPU/RAM/Network/Tailscale)
-#  • Further refined Network God-Mode + RDP response tuning
-#  • Stricter sovereign security defaults + graceful degradation everywhere
-#  • Richer structured logging + post-run diagnostics
-# ═══════════════════════════════════════════════════════════════════════════
 
 on:
   workflow_dispatch:
@@ -129,44 +112,42 @@ jobs:
           Start-Transcript -Path "C:\Setup\logs\01_downloader.log" -Append
 
           Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-          Write-Host "  APEX-ULTIMA v${env:APEX_VERSION}" -ForegroundColor Cyan
-          Write-Host "  THE MOST ADVANCED RDP-on-GitHub-Actions Sovereign Fabric" -ForegroundColor Cyan
-          Write-Host "  Tailscale-Only • Self-Healing • Blazing Performance • Full Observability" -ForegroundColor Cyan
+          Write-Host "  APEX-ULTIMA v${env:APEX_VERSION} — Sovereign Apex Fabric" -ForegroundColor Cyan
           Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
 
           $Global:Apex = [ordered]@{
-              Version          = $env:APEX_VERSION
-              MatrixId         = [int]$env:MATRIX_ID
-              IsMulti          = $env:MULTI_FLAG -eq '1'
-              CrdEnabled       = $false
-              Hostname         = if ($env:MULTI_FLAG -eq '1' -and ($env:CRD_CODE_RAW | Out-String).Trim().Length -le 3) { "bullet$($env:MATRIX_ID)" } else { "bullet" }
-              RuntimeMinutes   = 355
-              TailscaleIP      = $null
-              RustDeskUrl      = $null
-              StartTime        = Get-Date
-              EventsLog        = "C:\Setup\apex-events.jsonl"
-              MetricsLog       = "C:\Setup\apex-metrics.jsonl"
+              Version        = $env:APEX_VERSION
+              MatrixId       = [int]$env:MATRIX_ID
+              IsMulti        = $env:MULTI_FLAG -eq '1'
+              CrdEnabled     = $false
+              Hostname       = if ($env:MULTI_FLAG -eq '1' -and ($env:CRD_CODE_RAW | Out-String).Trim().Length -le 3) { "bullet$($env:MATRIX_ID)" } else { "bullet" }
+              RuntimeMinutes = 355
+              TailscaleIP    = $null
+              RustDeskUrl    = $null
+              StartTime      = Get-Date
+              EventsLog      = "C:\Setup\apex-events.jsonl"
+              MetricsLog     = "C:\Setup\apex-metrics.jsonl"
           }
 
           function Write-ApexEvent {
-              param([string]$Level = "INFO", [string]$Message, [hashtable]$Data = @{})
-              $evt = [ordered]@{ ts = (Get-Date).ToString("o"); level = $Level.ToUpper(); msg = $Message; matrix = $Global:Apex.MatrixId; data = $Data }
-              Add-Content -Path $Global:Apex.EventsLog -Value ($evt | ConvertTo-Json -Compress -Depth 5) -Encoding utf8
-              $color = switch ($Level) { "ERROR" { "Red" } "WARN" { "Yellow" } "SUCCESS" { "Green" } default { "Cyan" } }
-              Write-Host "[$((Get-Date).ToString('HH:mm:ss'))] [$Level] $Message" -ForegroundColor $color
+              param([string]$Level="INFO", [string]$Message, [hashtable]$Data = @{})
+              $evt = [ordered]@{ ts=(Get-Date).ToString("o"); level=$Level.ToUpper(); msg=$Message; matrix=$Global:Apex.MatrixId; data=$Data }
+              Add-Content $Global:Apex.EventsLog -Value ($evt | ConvertTo-Json -Compress -Depth 5) -Encoding utf8
+              $c = @{ERROR="Red";WARN="Yellow";SUCCESS="Green";INFO="Cyan"}[$Level]; if(-not $c){$c="White"}
+              Write-Host "[$((Get-Date).ToString('HH:mm:ss'))] [$Level] $Message" -ForegroundColor $c
           }
 
           function Invoke-ApexRetry {
-              param([scriptblock]$Block, [int]$Max = 3, [int]$Delay = 4, [string]$Name = "Operation")
-              for ($i = 1; $i -le $Max; $i++) {
-                  try { $result = & $Block; if ($i -gt 1) { Write-ApexEvent "SUCCESS" "$Name succeeded on retry $i" }; return $result }
-                  catch { Write-ApexEvent "WARN" "$Name attempt $i failed: $($_.Exception.Message)"; if ($i -eq $Max) { throw }; Start-Sleep -Seconds ($Delay * $i) }
+              param([scriptblock]$Block, [int]$Max=3, [int]$Delay=4, [string]$Name="Op")
+              for($i=1; $i -le $Max; $i++){
+                  try { $r = & $Block; if($i -gt 1){Write-ApexEvent SUCCESS "$Name succeeded on retry $i"}; return $r }
+                  catch { Write-ApexEvent WARN "$Name attempt $i failed"; if($i -eq $Max){throw}; Start-Sleep -Seconds ($Delay * $i) }
               }
           }
 
-          function Send-ApexTelegram { param([string]$Text, [string]$ParseMode = "Markdown")
-              if (-not $env:TG_TOKEN -or -not $env:TG_CHAT) { return $false }
-              try { Invoke-RestMethod -Uri "https://api.telegram.org/bot$($env:TG_TOKEN)/sendMessage" -Method Post -Body @{ chat_id = $env:TG_CHAT; text = $Text; parse_mode = $ParseMode } -ErrorAction Stop | Out-Null; return $true }
+          function Send-ApexTelegram { param([string]$Text)
+              if(-not $env:TG_TOKEN -or -not $env:TG_CHAT){return $false}
+              try { Invoke-RestMethod -Uri "https://api.telegram.org/bot$($env:TG_TOKEN)/sendMessage" -Method Post -Body @{chat_id=$env:TG_CHAT; text=$Text; parse_mode="Markdown"} -ErrorAction Stop | Out-Null; return $true }
               catch { return $false }
           }
 
@@ -176,40 +157,40 @@ jobs:
               $net = Get-NetAdapter | Where-Object Status -eq 'Up' | Select-Object -First 1
               $stats = if($net){ $net | Get-NetAdapterStatistics } else { $null }
               return [ordered]@{
-                  timestamp     = (Get-Date).ToString("o")
-                  free_ram_gb   = [math]::Round($os.FreePhysicalMemory / 1MB, 2)
-                  cpu_load_pct  = [math]::Round($cpu, 1)
-                  network_sent_mb = if ($net) { [math]::Round($net | Get-NetAdapterStatistics | Select-Object -ExpandProperty SentBytes / 1MB, 2) } else { 0 }
-                  network_recv_mb = if ($net) { [math]::Round($net | Get-NetAdapterStatistics | Select-Object -ExpandProperty ReceivedBytes / 1MB, 2) } else { 0 }
+                  ts = (Get-Date).ToString("o")
+                  free_ram_gb = [math]::Round($os.FreePhysicalMemory / 1MB, 2)
+                  cpu_load_pct = [math]::Round($cpu, 1)
+                  net_sent_mb = if($stats){ [math]::Round($stats.SentBytes / 1MB, 2) } else { 0 }
+                  net_recv_mb = if($stats){ [math]::Round($stats.ReceivedBytes / 1MB, 2) } else { 0 }
               }
           }
 
           # CRD decision
           $crdRaw = ($env:CRD_CODE_RAW | Out-String).Trim()
           $Global:Apex.CrdEnabled = $crdRaw.Length -gt 3
-          if ($Global:Apex.CrdEnabled) { Write-ApexEvent "INFO" "CRD mode — single instance forced" }
+          if($Global:Apex.CrdEnabled){ Write-ApexEvent "INFO" "CRD mode — single instance forced" }
 
           # Runtime
-          $rt = if ([bool]::Parse($env:QUICK_TEST)) { 5 } elseif ([int]$env:RUNTIME_INPUT -ge 6 -and [int]$env:RUNTIME_INPUT -le 360) { [int]$env:RUNTIME_INPUT } else { 355 }
+          $rt = if([bool]::Parse($env:QUICK_TEST)){5} elseif([int]$env:RUNTIME_INPUT -ge 6 -and [int]$env:RUNTIME_INPUT -le 360){[int]$env:RUNTIME_INPUT}else{355}
           $Global:Apex.RuntimeMinutes = $rt
           [Environment]::SetEnvironmentVariable("RUNTIME_MINUTES", $rt, "Process")
           Write-ApexEvent "INFO" "Hostname: $($Global:Apex.Hostname) | Runtime: $rt min | CRD: $($Global:Apex.CrdEnabled)"
 
-          # Downloads (pinned latest)
+          # Downloads
           choco install aria2 -y --no-progress --limit-output 2>&1 | Out-Null
           $aria = (Get-Command aria2c.exe -ErrorAction SilentlyContinue).Source ?? "C:\ProgramData\chocolatey\bin\aria2c.exe"
 
-          function Get-ApexFile($Url, $OutDir, $OutName, $Label) {
+          function Get-ApexFile($Url, $OutDir, $OutName, $Label){
               $dest = Join-Path $OutDir $OutName
-              if (Test-Path $dest) { Write-ApexEvent "INFO" "$Label already present"; return $dest }
-              if (Test-Path $aria) {
+              if(Test-Path $dest){ Write-ApexEvent "INFO" "$Label already present"; return $dest }
+              if(Test-Path $aria){
                   $args = @("--dir=$OutDir","--out=$OutName","--max-connection-per-server=16","--split=16","--min-split-size=1M",
                             "--max-tries=8","--retry-wait=3","--connect-timeout=20","--timeout=90","--auto-file-renaming=false",
                             "--allow-overwrite=true","--console-log-level=warn","--check-certificate=true",$Url)
-                  for ($i = 1; $i -le 3; $i++) {
+                  for($i=1;$i -le 3;$i++){
                       & $aria @args 2>&1 | Out-Null
-                      if ($LASTEXITCODE -eq 0 -and (Test-Path $dest)) { Write-ApexEvent "SUCCESS" "$Label OK"; return $dest }
-                      Start-Sleep -Seconds (3 * $i)
+                      if($LASTEXITCODE -eq 0 -and (Test-Path $dest)){ Write-ApexEvent "SUCCESS" "$Label OK"; return $dest }
+                      Start-Sleep (3*$i)
                   }
               }
               Start-BitsTransfer -Source $Url -Destination $dest -ErrorAction Stop
@@ -221,15 +202,15 @@ jobs:
           Get-ApexFile "https://github.com/rustdesk/rustdesk/releases/download/1.4.9/rustdesk-1.4.9-x86_64.msi" "C:\Setup" "rustdesk.msi" "RustDesk 1.4.9"
           Get-ApexFile "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" "C:\Setup" "crdhost.msi" "CRD Host"
 
-          # Early power & time
+          # Early hardening
           powercfg /change standby-timeout-ac 0; powercfg /change monitor-timeout-ac 0; powercfg /change hibernate-timeout-ac 0; powercfg /hibernate off
           reg add "HKLM\Software\Policies\Microsoft\Windows\Personalization" /v NoLockScreen /t REG_DWORD /d 1 /f | Out-Null
           w32tm /config /manualpeerlist:"time.cloudflare.com,0x8 pool.ntp.org,0x8" /syncfromflags:manual /reliable:yes /update | Out-Null
           Restart-Service w32time -Force -ErrorAction SilentlyContinue; w32tm /resync /force | Out-Null
 
-          # APEX-Core v2.2 Bootstrap (Fixed YAML parsing)
+          # APEX-Core v2.2 Bootstrap (Fixed - using variable + here-string)
           $core = "C:\Setup\scripts\APEX-Core.ps1"
-          @'
+          $coreContent = @'
 # APEX-Core v2.2 — Sovereign Apex Fabric Functions Library
 $ErrorActionPreference = 'Continue'
 
@@ -293,7 +274,8 @@ function Test-TailscaleHealth {
 }
 
 Write-ApexEvent SUCCESS "APEX-Core v2.2 (Sovereign Apex Fabric) loaded successfully"
-'@ | Set-Content $core -Encoding utf8
+'@
+          Set-Content -Path $core -Value $coreContent -Encoding utf8
 
           Write-ApexEvent "SUCCESS" "APEX-Core v2.2 bootstrapped with advanced helpers + telemetry"
           Stop-Transcript
@@ -309,14 +291,12 @@ Write-ApexEvent SUCCESS "APEX-Core v2.2 (Sovereign Apex Fabric) loaded successfu
           Start-Transcript -Path "C:\Setup\logs\02_kernel.log" -Append
           Write-ApexEvent "INFO" "Applying APEX Kernel v2.2 + Sovereign Network & RDP God-Mode..."
 
-          # High-precision timer
           try {
               Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class TimerRes {[DllImport("ntdll.dll")] public static extern int NtSetTimerResolution(uint d, bool s, out uint c);}' -ErrorAction Stop
               [TimerRes]::NtSetTimerResolution(5000, $true, [ref]([uint32]0)) | Out-Null
               Write-ApexEvent "SUCCESS" "System timer locked at 0.5ms"
           } catch { Write-ApexEvent "WARN" "Timer OC warning" }
 
-          # Ultimate Performance + disable core parking
           powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61 | Out-Null
           $scheme = (powercfg -list | Select-String "e9a42b02-d5df-448d-aa00-03f14749eb61").Line
           if($scheme -match "([0-9a-f-]{36})"){ powercfg -setactive $Matches[1] } else { powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c }
@@ -327,7 +307,6 @@ Write-ApexEvent SUCCESS "APEX-Core v2.2 (Sovereign Apex Fabric) loaded successfu
           powercfg -setactive SCHEME_CURRENT
           Write-ApexEvent "SUCCESS" "Ultimate Performance + core parking disabled"
 
-          # Aggressive debloat + Defender off
           $bloat = @("wuauserv","DoSvc","SysMain","DiagTrack","WSearch","BITS","MapsBroker","EdgeUpdate","Spooler","WerSvc","RetailDemo","XblAuthManager","XblGameSave","dmwappushservice","PcaSvc","Fax","WbioSrvc","Themes","TabletInputService")
           $bloat | ForEach-Object { Stop-Service $_ -Force -ErrorAction SilentlyContinue; Set-Service $_ -StartupType Disabled -ErrorAction SilentlyContinue }
           Set-MpPreference -DisableRealtimeMonitoring $true -DisableIOAVProtection $true -DisableArchiveScanning $true -DisableBehaviorMonitoring $true -SubmitSamplesConsent 2 -Force -ErrorAction SilentlyContinue
@@ -335,7 +314,6 @@ Write-ApexEvent SUCCESS "APEX-Core v2.2 (Sovereign Apex Fabric) loaded successfu
           reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender" /v DisableAntiSpyware /t REG_DWORD /d 1 /f | Out-Null
           Write-ApexEvent "SUCCESS" "Defender + telemetry bloat neutralized"
 
-          # RDP base + Sovereign Performance Tuning
           $rdpTcp = "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp"
           $tsCtrl = "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server"
           $tsPol  = "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services"
@@ -351,7 +329,6 @@ Write-ApexEvent SUCCESS "APEX-Core v2.2 (Sovereign Apex Fabric) loaded successfu
           Set-ItemProperty $tsCtrl KeepAliveInterval 1 -Type DWord -Force
           New-NetFirewallRule -DisplayName "RDP-UDP-3389-In" -Direction Inbound -LocalPort 3389 -Protocol UDP -Action Allow -ErrorAction SilentlyContinue | Out-Null
 
-          # === RDP Sovereign Blazing Response Tuning ===
           Set-ItemProperty $rdpTcp fEnableCompression 1 -Type DWord -Force
           Set-ItemProperty $rdpTcp fEnableAutoReconnect 1 -Type DWord -Force
           Set-ItemProperty $rdpTcp BitmapCacheSize 4096 -Type DWord -Force
@@ -366,13 +343,11 @@ Write-ApexEvent SUCCESS "APEX-Core v2.2 (Sovereign Apex Fabric) loaded successfu
           Set-ItemProperty $tsPol fDisableClip 0 -Type DWord -Force
           Write-ApexEvent "SUCCESS" "RDP protocol tuned for maximum responsiveness over Tailscale"
 
-          # Nagle death + immediate ACK
           Get-ChildItem "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces" | ForEach-Object {
               Set-ItemProperty $_.PSPath TcpAckFrequency 1 -Type DWord -Force -ErrorAction SilentlyContinue
               Set-ItemProperty $_.PSPath TCPNoDelay 1 -Type DWord -Force -ErrorAction SilentlyContinue
           }
 
-          # === Network God-Mode v2.2 (Maximum Tailscale Performance) ===
           Write-ApexEvent "INFO" "Applying Sovereign Network God-Mode v2.2..."
 
           Get-NetAdapter | Where-Object Status -eq 'Up' | Disable-NetAdapterPowerManagement -ErrorAction SilentlyContinue
@@ -417,7 +392,6 @@ Write-ApexEvent SUCCESS "APEX-Core v2.2 (Sovereign Apex Fabric) loaded successfu
           $iface = Get-NetAdapter | Where-Object {$_.Status -eq 'Up' -and $_.Name -notmatch "Tailscale"} | Select-Object -First 1
           if($iface){ Set-DnsClientServerAddress -InterfaceIndex $iface.InterfaceIndex -ServerAddresses ("1.1.1.1","1.0.0.1") }
 
-          # RDP user
           if(-not $env:PASS){ Write-ApexEvent "ERROR" "RDP_PASSWORD secret missing"; exit 1 }
           $u = $env:RDP_USER
           $sec = ConvertTo-SecureString $env:PASS -AsPlainText -Force
@@ -489,9 +463,9 @@ Write-ApexEvent SUCCESS "APEX-Core v2.2 (Sovereign Apex Fabric) loaded successfu
           Stop-Transcript
 
       # ════════════════════════════════════════════════════════════════════
-      # STEP 4 — 🧠 File Prep + RAM-Disk + CRD/RustDesk + Background Prep
+      # STEP 4 — 🧠 File Prep + RAM-Disk + CRD/RustDesk
       # ════════════════════════════════════════════════════════════════════
-      - name: "🧠 File Prep, RAM-Disk, CRD-ULTIMA + RustDesk + Background Prep"
+      - name: "🧠 File Prep, RAM-Disk, CRD-ULTIMA + RustDesk"
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Continue'
@@ -514,7 +488,6 @@ Write-ApexEvent SUCCESS "APEX-Core v2.2 (Sovereign Apex Fabric) loaded successfu
               Write-ApexEvent "SUCCESS" "DPAPI purge completed"
           }
 
-          # Ignition scripts
           $sessMin = $Global:Apex.RuntimeMinutes
           $timer = "Add-Type -AssemblyName System.Windows.Forms,System.Drawing; `$f=New-Object Windows.Forms.Form; `$f.TopMost=`$true; `$f.FormBorderStyle='None'; `$f.BackColor='Black'; `$f.Opacity=0.88; `$f.Size=New-Object Drawing.Size(132,28); `$f.StartPosition='Manual'; `$f.Location=New-Object Drawing.Point(12,12); `$l=New-Object Windows.Forms.Label; `$l.Dock='Fill'; `$l.ForeColor='Lime'; `$l.Font=New-Object Drawing.Font('Consolas',13,[Drawing.FontStyle]::Bold); `$l.TextAlign='MiddleCenter'; `$f.Controls.Add(`$l); `$end=(Get-Date).AddMinutes($sessMin); `$t=New-Object Windows.Forms.Timer; `$t.Interval=1000; `$t.Add_Tick({ `$ts=New-TimeSpan -Start (Get-Date) -End `$end; if(`$ts.TotalSeconds -le 0){`$f.Close()}else{`$l.Text=`$ts.ToString('hh\:mm\:ss')} }); `$t.Start(); [Windows.Forms.Application]::Run(`$f)"
           Set-Content "C:\Setup\Timer.ps1" -Value $timer
@@ -527,7 +500,6 @@ Write-ApexEvent SUCCESS "APEX-Core v2.2 (Sovereign Apex Fabric) loaded successfu
           @("@echo off","echo [APEX-ULTIMA v2.2] Sovereign ignition...","start """" wscript.exe ""C:\Setup\Launcher.vbs""","start """" wscript.exe ""C:\Setup\IdleLauncher.vbs""") | Set-Content "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp\Boot.bat"
           Write-ApexEvent "SUCCESS" "Pristine ignition scripts deployed"
 
-          # CRD-ULTIMA
           if($Global:Apex.CrdEnabled){
               Write-ApexEvent "INFO" "Launching CRD-ULTIMA first..."
               $p = Get-CrdLaunchParameters $env:CRD_CODE_RAW $env:CRD_PIN
@@ -544,7 +516,6 @@ Write-ApexEvent SUCCESS "APEX-Core v2.2 (Sovereign Apex Fabric) loaded successfu
               if(Wait-ApexService "Chrome Remote Desktop Service" 75){ Write-ApexEvent "SUCCESS" "CRD Service running" }
           }
 
-          # RustDesk fallback
           Write-ApexEvent "INFO" "Installing RustDesk 1.4.9 fallback..."
           $rd = "C:\Program Files\RustDesk\rustdesk.exe"
           if(-not (Test-Path $rd)){ Start-Process msiexec.exe -ArgumentList "/i","C:\Setup\rustdesk.msi","/quiet","/norestart" -Wait }
@@ -574,9 +545,9 @@ Write-ApexEvent SUCCESS "APEX-Core v2.2 (Sovereign Apex Fabric) loaded successfu
           Stop-Transcript
 
       # ════════════════════════════════════════════════════════════════════
-      # STEP 5 — ✅ Pre-flight Gate v2.2 (Rich Verification + Telemetry)
+      # STEP 5 — ✅ Pre-flight Gate v2.2
       # ════════════════════════════════════════════════════════════════════
-      - name: "✅ Pre-flight Gate v2.2 (Rich Verification + Initial Telemetry)"
+      - name: "✅ Pre-flight Gate v2.2 (Rich Verification + Telemetry)"
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Continue'
@@ -639,7 +610,6 @@ Write-ApexEvent SUCCESS "APEX-Core v2.2 (Sovereign Apex Fabric) loaded successfu
           Write-ApexEvent "SUCCESS" "APEX-ULTIMA v2.2 SOVEREIGN SESSION ACTIVE"
           Write-Host "   Host: $($Global:Apex.Hostname) | IP: $($Global:Apex.TailscaleIP) | CRD: $($Global:Apex.CrdEnabled)" -ForegroundColor Cyan
 
-          # === Background Self-Healing Monitor Job (Advanced) ===
           $monitorScript = {
               param($TsPath, $MatrixId, $EventsLog)
               while($true){
@@ -656,7 +626,7 @@ Write-ApexEvent SUCCESS "APEX-Core v2.2 (Sovereign Apex Fabric) loaded successfu
           $tsPath = "C:\Program Files\Tailscale\tailscale.exe"
           if(Test-Path $tsPath){
               Start-Job -ScriptBlock $monitorScript -ArgumentList $tsPath, $Global:Apex.MatrixId, $Global:Apex.EventsLog -Name "ApexTailscaleMonitor" | Out-Null
-              Write-ApexEvent "SUCCESS" "Background Self-Healing Monitor started (parallel job)"
+              Write-ApexEvent "SUCCESS" "Background Self-Healing Monitor started"
           }
 
           $lastHB = Get-Date
@@ -677,13 +647,11 @@ Write-ApexEvent SUCCESS "APEX-Core v2.2 (Sovereign Apex Fabric) loaded successfu
               Start-Sleep -Seconds 60
           }
 
-          # Clean up background monitor
           Get-Job -Name "ApexTailscaleMonitor" -ErrorAction SilentlyContinue | Stop-Job -PassThru | Remove-Job | Out-Null
           Write-ApexEvent "SUCCESS" "Background monitor stopped cleanly"
 
           Write-ApexEvent "SUCCESS" "Session complete — evaluating handoff..."
 
-          # Handoff
           $cyclesLeft = [int]$env:CYCLES_INPUT
           if($cyclesLeft -gt 0){
               $next = $cyclesLeft - 1
@@ -737,5 +705,4 @@ Write-ApexEvent SUCCESS "APEX-Core v2.2 (Sovereign Apex Fabric) loaded successfu
           Write-Host "`n═══════════════════════════════════════════════════════════════" -ForegroundColor Green
           Write-Host "  APEX-ULTIMA v2.2 SOVEREIGN APEX FABRIC — COMPLETE" -ForegroundColor Green
           Write-Host "  Most advanced RDP-on-GitHub-Actions engineering possible" -ForegroundColor Green
-          Write-Host "  Tailscale-Only • Self-Healing • Blazing Fast • Fully Observable" -ForegroundColor Green
           Write-Host "═══════════════════════════════════════════════════════════════`n" -ForegroundColor Green
